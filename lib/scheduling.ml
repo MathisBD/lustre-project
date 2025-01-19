@@ -22,14 +22,19 @@ let add_vars_of_patt s { tpatt_desc = p; _ } =
 let rec add_vars_of_exp s { texpr_desc = e; _ } =
   match e with
   | TE_const _ -> s
-  | TE_ident _x -> S.empty (* TODO *)
-  | TE_pre _e1 -> S.empty (* TODO *)
-  | TE_arrow (_e1, _e2) -> S.empty (* TODO *)
+  | TE_ident x -> S.add x s
+  | TE_pre _ -> S.empty (* [pre] casse les dépendances. *)
+  | TE_arrow (e1, e2) ->
+      let s = add_vars_of_exp s e1 in
+      add_vars_of_exp s e2
   | TE_unop (_, e') -> add_vars_of_exp s e'
   | TE_binop (_, e1, e2) ->
       let s = add_vars_of_exp s e1 in
       add_vars_of_exp s e2
-  | TE_if (_e1, _e2, _e3) -> S.empty (* TODO *)
+  | TE_if (e1, e2, e3) ->
+      let s = add_vars_of_exp s e1 in
+      let s = add_vars_of_exp s e2 in
+      add_vars_of_exp s e3
   | TE_app (_, l) | TE_prim (_, l) | TE_print l ->
       List.fold_left add_vars_of_exp s l
   | TE_tuple l -> List.fold_left add_vars_of_exp s l

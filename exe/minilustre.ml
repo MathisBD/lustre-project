@@ -8,7 +8,6 @@ let usage = "usage: " ^ Sys.argv.(0) ^ " [options] file.mls"
 let parse_only = ref false
 let type_only = ref false
 let norm_only = ref false
-let sched_only = ref false
 let main_node = ref ""
 let verbose = ref false
 
@@ -16,7 +15,6 @@ let spec =
   [ ("-parse-only", Arg.Set parse_only, "  stops after parsing")
   ; ("-type-only", Arg.Set type_only, "  stops after typing")
   ; ("-norm-only", Arg.Set norm_only, "  stops after normalization")
-  ; ("-sched-only", Arg.Set sched_only, "  stops after scheduling")
   ; ("-main", Arg.Set_string main_node, "<name>  main node")
   ; ("-verbose", Arg.Set verbose, "print intermediate transformations")
   ; ("-v", Arg.Set verbose, "print intermediate transformations")
@@ -77,13 +75,6 @@ let () =
       Typed_ast_printer.print_node_list_std ft
     end;
     Checks.scheduling ft;
-    if !sched_only then exit 0;
-    let imp_prg = Imp.compile ft in
-    let imp_prg = Imp.rename_nodes imp_prg main_node in
-    let ml = Filename.chop_suffix file ".mls" ^ ".ml" in
-    let c = open_out ml in
-    Ocaml_printer.output_ocaml c imp_prg !main_node;
-    close_out c;
     exit 0
   with
   | Lexer.Lexical_error s ->
