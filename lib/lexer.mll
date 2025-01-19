@@ -15,7 +15,7 @@
 	  ; "else", ELSE
 	  ; "end", END
 	  ; "false", CONST_BOOL(false) 
-	  ; "fby", FBY
+      ; "pre", PRE
 	  ; "float", FLOAT
 	  ; "if", IF
 	  ; "int", INT
@@ -43,7 +43,7 @@ let digit = ['0'-'9']
 let exponent = ('e' | 'E') ('+' | '-')? digit+
 let float = digit+ '.' digit* exponent?
           | digit* '.'digit+ exponent?
-	  | digit+ exponent
+	      | digit+ exponent
 let ident = alpha (alpha | '_' | '\'' | digit)*
 
 rule token = parse
@@ -60,7 +60,9 @@ rule token = parse
   | digit+ 
       { CONST_INT (int_of_string (lexeme lexbuf)) } 
   | float  
-      { CONST_FLOAT (float_of_string (lexeme lexbuf)) } 
+      { CONST_FLOAT (float_of_string (lexeme lexbuf)) }
+  | "->"
+      { ARROW } 
   | "-"
       { MINUS }
   | "+"
@@ -101,8 +103,8 @@ rule token = parse
       { COMMA }
   | '"'
       { let buf = Buffer.create 512 in
-	string buf lexbuf;
-	CONST_STRING (Buffer.contents buf) }
+	    string buf lexbuf;
+	    CONST_STRING (Buffer.contents buf) }
   | _ 
       { raise (Lexical_error (lexeme lexbuf)) }
   | eof
@@ -112,16 +114,16 @@ and string buf = parse
   | '"' { () }
   | '\\' 'n' 
       { Buffer.add_string buf "\\n";
-	string buf lexbuf }
+	    string buf lexbuf }
   | '\\' '\\' 
       { Buffer.add_string buf "\\\\";
-	string buf lexbuf }
+	    string buf lexbuf }
   | '\\' '"' 
       { Buffer.add_string buf "\\\"";
-	string buf lexbuf }
+	    string buf lexbuf }
   | [^ '\\' '"' '\n']+ 
       { Buffer.add_string buf (lexeme lexbuf);
-	string buf lexbuf }
+	    string buf lexbuf }
   | '\\' 
       { raise (Lexical_error "illegal escape character") }
   | '\n' | eof

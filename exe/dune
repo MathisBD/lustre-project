@@ -1,0 +1,4 @@
+(executable
+ (name minilustre)
+ (public_name lustre-project.exe)
+ (libraries lustre-project.lib))

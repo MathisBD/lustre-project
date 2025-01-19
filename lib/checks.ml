@@ -3,55 +3,58 @@
 open Typed_ast
 open Typed_ast_utils
 
-
 (* Vérification de la normalisation *)
 
 exception Normalization of t_node
 
 let atom expr =
-  begin match expr.texpr_desc with
-  | TE_const _ -> true
-  | TE_ident _ -> true
-  | TE_unop (_, _)
-  | TE_binop (_, _, _)
-  | TE_app (_, _)
-  | TE_prim (_, _)
-  | TE_if (_, _, _)
-  | TE_fby (_, _)
-  | TE_tuple _
-  | TE_print _ -> false
+  begin
+    match expr.texpr_desc with
+    | TE_const _ -> true
+    | TE_ident _ -> true
+    | TE_unop (_, _)
+    | TE_binop (_, _, _)
+    | TE_app (_, _)
+    | TE_prim (_, _)
+    | TE_if (_, _, _)
+    | TE_pre _
+    | TE_arrow (_, _)
+    | TE_tuple _ | TE_print _ ->
+        false
   end
 
 let rec bexpr expr =
-  if atom expr then true
-  else
-    begin match expr.texpr_desc with
+  if atom expr
+  then true
+  else begin
+    match expr.texpr_desc with
     | TE_unop (_, e) -> bexpr e
     | TE_binop (_, e1, e2) -> bexpr e1 && bexpr e2
     | TE_if (e, e1, e2) -> bexpr e && bexpr e1 && bexpr e2
     | TE_tuple el -> List.for_all bexpr el
-    | TE_app (_, _)
-    | TE_prim (_, _)
-    | TE_fby (_, _)
-    | TE_print _ -> false
-    | TE_const _
-    | TE_ident _ -> assert false
-    end
+    | TE_app (_, _) | TE_prim (_, _) | TE_pre _ | TE_arrow (_, _) | TE_print _
+      ->
+        false
+    | TE_const _ | TE_ident _ -> assert false
+  end
 
 let normalized_expr expr =
-  if bexpr expr then true
-  else
-    begin match expr.texpr_desc with
-    | TE_app (_, el) | TE_prim (_, el) | TE_print (el) -> List.for_all bexpr el
-    | TE_fby (_, { texpr_desc = TE_tuple el ; _} ) -> List.for_all atom el
-    | TE_fby (_, e) -> atom e
-    | TE_const _
-    | TE_ident _
+  if bexpr expr
+  then true
+  else begin
+    match expr.texpr_desc with
+    | TE_app (_, el) | TE_prim (_, el) | TE_print el -> List.for_all bexpr el
+    | TE_pre { texpr_desc = TE_tuple el; _ } -> List.for_all atom el
+    | TE_pre e -> atom e
+    | TE_arrow (_, { texpr_desc = TE_tuple el; _ }) -> List.for_all atom el
+    | TE_arrow (_, e) -> atom e
+    | TE_const _ | TE_ident _
     | TE_unop (_, _)
     | TE_binop (_, _, _)
     | TE_if (_, _, _)
-    | TE_tuple _ -> assert false
-    end
+    | TE_tuple _ ->
+        assert false
+  end
 
 let normalized_node n =
   List.for_all (fun eq -> normalized_expr eq.teq_expr) n.tn_equs
@@ -64,7 +67,6 @@ let normalization f =
   with Normalization n ->
     Format.eprintf "Warning: node %s is not in normal form.@." n.tn_name
 
-
 (* Vérification de l'ordonnancement *)
 
 exception Scheduling of t_node
@@ -75,43 +77,38 @@ let defs_of_patt patt acc =
 let deps_of_expr =
   let rec deps_of_expr expr acc =
     match expr.texpr_desc with
-    | TE_ident x -> expr, Scheduling.S.add x acc
-    | TE_fby (_, _) -> expr, acc
+    | TE_ident x -> (expr, Scheduling.S.add x acc)
+    | TE_pre _ -> (expr, acc)
+    | TE_arrow (e1, _) -> deps_of_expr e1 acc
     | TE_const _
     | TE_unop (_, _)
     | TE_binop (_, _, _)
     | TE_app (_, _)
     | TE_prim (_, _)
     | TE_if (_, _, _)
-    | TE_tuple _
-    | TE_print _ -> expr_map_fold deps_of_expr expr acc
+    | TE_tuple _ | TE_print _ ->
+        expr_map_fold deps_of_expr expr acc
   in
-  fun expr ->
-    snd (deps_of_expr expr Scheduling.S.empty)
+  fun expr -> snd (deps_of_expr expr Scheduling.S.empty)
 
 let scheduled_node node =
   let defs =
     List.fold_left
       (fun acc (x, _) -> Scheduling.S.add x acc)
-      Scheduling.S.empty
-      node.tn_input
+      Scheduling.S.empty node.tn_input
   in
   let _ =
     List.fold_left
       (fun defs eq ->
         let deps = deps_of_expr eq.teq_expr in
-        if Scheduling.S.subset deps defs then
-          defs_of_patt eq.teq_patt defs
-        else
-          raise (Scheduling node))
-      defs
-      node.tn_equs
+        if Scheduling.S.subset deps defs
+        then defs_of_patt eq.teq_patt defs
+        else raise (Scheduling node))
+      defs node.tn_equs
   in
   ()
 
 let scheduling f =
-  try
-    List.iter scheduled_node f
+  try List.iter scheduled_node f
   with Scheduling n ->
     Format.eprintf "Warning: node %s is not scheduled.@." n.tn_name
-

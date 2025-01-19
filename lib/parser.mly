@@ -20,8 +20,9 @@
 %token END
 %token EOF
 %token EQUAL
-%token NEQz
-%token FBY
+%token NEQ
+%token PRE
+%token ARROW
 %token FLOAT 
 %token <string> IDENT
 %token IF
@@ -50,7 +51,7 @@
 
 %nonassoc THEN
 %nonassoc ELSE
-%right FBY
+%right ARROW
 %left OR 
 %left AND
 %left COMP EQUAL NEQ                          /* < <= > >= <> = <> */
@@ -58,6 +59,7 @@
 %left STAR SLASH STAR_DOT SLASH_DOT           /* * /  */
 %nonassoc uminus                              /* - */
 %nonassoc NOT                                 /* not */
+%nonassoc PRE
 %left DOT
 
 /* Point d'entrée */
@@ -160,8 +162,10 @@ expr:
     { mk_expr (PE_app ($1, $3)) ($startpos, $endpos) }
 | IF expr THEN expr ELSE expr
     { mk_expr (PE_if ($2, $4, $6)) ($startpos, $endpos) }
-| expr FBY expr
-    { mk_expr (PE_fby ($1, $3)) ($startpos, $endpos) }
+| PRE expr
+    { mk_expr (PE_pre $2) ($startpos, $endpos) }
+| expr ARROW expr
+    { mk_expr (PE_arrow ($1, $3)) ($startpos, $endpos) }
 | expr PLUS expr          
     { mk_expr (PE_binop (Badd, $1, $3)) ($startpos, $endpos) }
 | expr PLUS_DOT expr          
