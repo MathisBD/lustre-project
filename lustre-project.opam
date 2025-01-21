@@ -9,7 +9,6 @@ homepage: "https://github.com/MathisBD/lustre-project"
 bug-reports: "https://github.com/MathisBD/lustre-project/issues"
 depends: [
   "dune" {>= "3.17"}
-  "ppx_deriving"
   "menhir"
   "ocamlgraph"
   "odoc" {with-doc}

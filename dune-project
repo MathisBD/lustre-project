@@ -15,4 +15,4 @@
  (bug_reports "https://github.com/MathisBD/lustre-project/issues")
  (synopsis
   "Project for course 'Modèles et langages pour la programmation des systèmes réactifs'")
- (depends ppx_deriving menhir ocamlgraph))
+ (depends menhir ocamlgraph))

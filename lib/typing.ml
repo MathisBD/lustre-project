@@ -49,17 +49,15 @@ let report fmt = function
   | UnboundVar id -> fprintf fmt "unbound variable %s" id
   | UnboundNode id -> fprintf fmt "unbound node %s" id
   | ExpectedType (t1, t2) ->
-      fprintf fmt "this expression has type %a but is expected to have type %a"
-        print_type t1 print_type t2
+      fprintf fmt "this expression has type %a but is expected to have type %a" print_type
+        t1 print_type t2
   | ExpectedPattern ty ->
       fprintf fmt "this pattern is expected to have type %a" print_type ty
   | ExpectedBase ty ->
-      fprintf fmt
-        "this expression has type %a but is expected to have a type simple type"
+      fprintf fmt "this expression has type %a but is expected to have a type simple type"
         print_type ty
   | ExpectedNum ty ->
-      fprintf fmt
-        "this expression has type %a but is expected to have type int or float"
+      fprintf fmt "this expression has type %a but is expected to have type int or float"
         print_type ty
   | Clash id -> fprintf fmt "The variable %s is defined several times" id
   | TooFewArguments -> fprintf fmt "too few arguments"
@@ -75,8 +73,7 @@ let report fmt = function
   | Causality -> fprintf fmt "problem of causality"
   | BadMain (t_in, t_out) ->
       fprintf fmt
-        "The main node has type %a -> %a but is expected to have type () -> \
-         unit"
+        "The main node has type %a -> %a but is expected to have type () -> unit"
         print_type t_in print_type t_out
 
 module Delta = struct
@@ -104,8 +101,7 @@ module Delta = struct
   let is_print f = f = "print"
 
   let find n =
-    try (Hashtbl.find nodes n, false)
-    with Not_found -> (List.assoc n prims, true)
+    try (Hashtbl.find nodes n, false) with Not_found -> (List.assoc n prims, true)
 
   let add = Hashtbl.replace nodes
   let save () = Hashtbl.fold (fun key ty env -> (key, ty) :: env) nodes []
@@ -123,17 +119,13 @@ module Gamma = struct
     M.add x (t, io) env
 
   let adds loc io = List.fold_left (fun env (x, t) -> add loc env x t io)
-
-  let find loc env x =
-    try M.find x env with Not_found -> error loc (UnboundVar x)
+  let find loc env x = try M.find x env with Not_found -> error loc (UnboundVar x)
 
   let patts_vars env =
     M.fold (fun x (_, io) s -> if io = Vpatt then S.add x s else s) env S.empty
 end
 
-let base_ty_of_ty loc t =
-  match t with [ t' ] -> t' | _ -> error loc (ExpectedBase t)
-
+let base_ty_of_ty loc t = match t with [ t' ] -> t' | _ -> error loc (ExpectedBase t)
 let compatible_base actual_ty expected_ty = actual_ty = expected_ty
 
 let compatible actual_ty expected_ty =
@@ -167,8 +159,7 @@ let not_a_nested_tuple e loc =
   match e with
   | PE_tuple el ->
       List.iter
-        (fun e ->
-          match e.pexpr_desc with PE_tuple _ -> error loc FlatTuple | _ -> ())
+        (fun e -> match e.pexpr_desc with PE_tuple _ -> error loc FlatTuple | _ -> ())
         el
   | _ -> assert false
 
@@ -225,9 +216,7 @@ and type_expr_desc env loc = function
         | [ Tint ], [ Tint ] -> (TE_binop (op, te1, te2), [ Tint ])
         | [ (Tint | Tfloat) ], [ (Tint | Tfloat) ] ->
             ( TE_binop
-                ( float_op_of_int_op op
-                , float_expr_of_expr te1
-                , float_expr_of_expr te2 )
+                (float_op_of_int_op op, float_expr_of_expr te1, float_expr_of_expr te2)
             , [ Tfloat ] )
         | [ (Tint | Tfloat) ], ty -> error e2.pexpr_loc (ExpectedNum ty)
         | ty, _ -> error e1.pexpr_loc (ExpectedNum ty)
@@ -295,7 +284,6 @@ and type_expr_desc env loc = function
       (TE_pre te1, ty1)
   | PE_arrow (e1, e2) ->
       let te1 = type_expr env e1 in
-      if not (is_constant env te1) then error e1.pexpr_loc ConstantExpected;
       let ty1 = te1.texpr_type in
       let te2 = type_expr env e2 in
       let ty2 = te2.texpr_type in
@@ -306,8 +294,7 @@ and type_expr_desc env loc = function
   | PE_tuple el as n ->
       not_a_nested_tuple n loc;
       let tel = List.map (type_expr env) el in
-      ( TE_tuple tel
-      , List.map (fun e -> base_ty_of_ty e.texpr_loc e.texpr_type) tel )
+      (TE_tuple tel, List.map (fun e -> base_ty_of_ty e.texpr_loc e.texpr_type) tel)
 
 and type_args env loc params_ty el =
   let tel = List.map (type_expr env) el in
@@ -339,9 +326,7 @@ and type_patt_desc env loc patt =
   match patt with
   | PP_ident x -> begin
       let ty =
-        match Gamma.find loc env x with
-        | t, Vpatt -> t
-        | _ -> error loc (InputVar x)
+        match Gamma.find loc env x with t, Vpatt -> t | _ -> error loc (InputVar x)
       in
       ([ x ], [ ty ])
     end
@@ -362,9 +347,7 @@ let type_equation env eq =
   let well_typed = compatible expr.texpr_type patt.tpatt_type in
   if well_typed
   then { teq_patt = patt; teq_expr = expr }
-  else
-    error eq.peq_expr.pexpr_loc
-      (ExpectedType (expr.texpr_type, patt.tpatt_type))
+  else error eq.peq_expr.pexpr_loc (ExpectedType (expr.texpr_type, patt.tpatt_type))
 
 let add_vars_of_patt loc s { teq_patt = { tpatt_desc = p; _ }; _ } =
   let add x s =
@@ -403,9 +386,7 @@ let type_node n =
   }
 
 let check_main ft main =
-  let ty =
-    try Delta.find main with Not_found -> error dummy_loc (UnboundNode main)
-  in
+  let ty = try Delta.find main with Not_found -> error dummy_loc (UnboundNode main) in
   match ty with
   | ([ Tunit ], [ Tunit ]), false -> ()
   | (t_in, t_out), false ->

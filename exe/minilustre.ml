@@ -5,17 +5,11 @@ open Lexing
 open Lib
 
 let usage = "usage: " ^ Sys.argv.(0) ^ " [options] file.mls"
-let parse_only = ref false
-let type_only = ref false
-let norm_only = ref false
 let main_node = ref ""
 let verbose = ref false
 
 let spec =
-  [ ("-parse-only", Arg.Set parse_only, "  stops after parsing")
-  ; ("-type-only", Arg.Set type_only, "  stops after typing")
-  ; ("-norm-only", Arg.Set norm_only, "  stops after normalization")
-  ; ("-main", Arg.Set_string main_node, "<name>  main node")
+  [ ("-main", Arg.Set_string main_node, "<name>  main node")
   ; ("-verbose", Arg.Set verbose, "print intermediate transformations")
   ; ("-v", Arg.Set verbose, "print intermediate transformations")
   ]
@@ -23,8 +17,7 @@ let spec =
 let file =
   let file = ref None in
   let set_file s =
-    if not (Filename.check_suffix s ".mls")
-    then raise (Arg.Bad "no .mls extension");
+    if not (Filename.check_suffix s ".mls") then raise (Arg.Bad "no .mls extension");
     file := Some s
   in
   Arg.parse spec set_file usage;
@@ -46,7 +39,7 @@ let () =
   try
     let f = Parser.file Lexer.token lb in
     close_in c;
-    if !parse_only then exit 0;
+    (* Type checking. *)
     let ft = Typing.type_file f !main_node in
     if !verbose
     then begin
@@ -55,8 +48,8 @@ let () =
       Format.printf "/**************************************/@.";
       Typed_ast_printer.print_node_list_std ft
     end;
-    if !type_only then exit 0;
-    let ft = Normalization.file ft in
+    (* Normalization. *)
+    (*let ft = Normalization.file ft in
     if !verbose
     then begin
       Format.printf "/**************************************/@.";
@@ -64,8 +57,8 @@ let () =
       Format.printf "/**************************************/@.";
       Typed_ast_printer.print_node_list_std ft
     end;
-    Checks.normalization ft;
-    if !norm_only then exit 0;
+    Checks.normalization ft;*)
+    (* Scheduling. *)
     let ft = Scheduling.schedule ft in
     if !verbose
     then begin
@@ -75,6 +68,8 @@ let () =
       Typed_ast_printer.print_node_list_std ft
     end;
     Checks.scheduling ft;
+    (* Initialization checking. *)
+    Initialization.check ft;
     exit 0
   with
   | Lexer.Lexical_error s ->

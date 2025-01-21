@@ -1,86 +1,20 @@
 open Asttypes
 open Typed_ast
+open Delay_types
 
 (** Exception raised when a node is not properly initialized. *)
 exception Initialization
 
-(**************************************************************************)
-(** *** Delay Types. *)
-(**************************************************************************)
-
 (** Maps over strings. *)
 module StringMap = Map.Make (String)
 
-(** Atomic delay type. *)
-type d_atom =
-  | D0 (* Initialized at all time steps >= 0. *)
-  | D1 (* Initialized at all time steps >= 1. *)
-  | Dvar of int (* Delay variable. The integer is a unique identifier. *)
-
-(** Tree of products of atomic delay types. *)
-type d_prod = Datom of d_atom | Dtuple of d_prod list
-
-(** Full delay types. *)
-type d_type = Dprod of d_prod | Dfunc of d_prod * d_prod
-
 (** [mk_d_tuple [d_1; d_2; ...]] makes the delay type [(d_1, d_2, ...)].
     @raise Invalid_argument if a [d_i] is a function type. *)
-let rec mk_d_tuple (ds : d_type list) : d_type =
+let mk_d_tuple (ds : d_type list) : d_type =
   let raw_ds =
     List.map (function Dprod d -> d | _ -> raise @@ Invalid_argument "mk_d_tuple") ds
   in
   Dprod (Dtuple raw_ds)
-
-(**************************************************************************)
-(** *** Delay Constraints. *)
-(**************************************************************************)
-
-(** A set of inequality constraints [d_i <= d_j] between atomic delays is represented as a
-    directed graph : the constraint [d_i <= d_j] is encoded as an edge from [d_i] to
-    [d_j]. *)
-module Constraints : sig
-  (** A set of constraints on atomic delays. *)
-  type t
-
-  (** The empty constraint set. *)
-  val empty : t
-
-  (** [add cs d1 d2] adds the constraints [d1 <= d2] to the constraint set [cs]. It does
-      not check the result is consistent. *)
-  val add : t -> d_atom -> d_atom -> t
-
-  (** Check if a set of constraints is consistent, i.e. does not imply the inequality
-      [D1 <= D0]. *)
-  val consistent : t -> bool
-
-  (** Convert a set of constraints to a list of constraints. *)
-  val to_list : t -> (d_atom * d_atom) list
-end = struct
-  (** Ocamlgraph to use atomic delays as graph vertices. *)
-  module V : Graph.Sig.COMPARABLE with type t = d_atom = struct
-    type t = d_atom
-
-    let equal d d' = d = d'
-    let compare = compare
-    let hash = Hashtbl.hash
-  end
-
-  (** Ocamlgraph module that implements directed persistent graphs with atomic delays as
-      vertices. *)
-  module G = Graph.Persistent.Digraph.Concrete (V)
-
-  type t = G.t
-
-  let empty = G.empty
-  let add cs d1 d2 = G.add_edge cs d1 d2
-
-  let consistent cs : bool =
-    let module PathChecker = Graph.Path.Check (G) in
-    not @@ PathChecker.check_path (PathChecker.create cs) D1 D0
-
-  let to_list cs : (d_atom * d_atom) list =
-    G.fold_edges (fun d1 d2 acc -> (d1, d2) :: acc) cs []
-end
 
 (**************************************************************************)
 (** *** Delay Subtyping. *)
@@ -199,48 +133,53 @@ let infer_ident (env : d_env) (cs : Constraints.t) (x : string) : d_type * Const
     @raise SubtypingError *)
 let rec infer_expr (env : d_env) (cs : Constraints.t) (e : t_expr) :
     d_type * Constraints.t =
-  match e.texpr_desc with
-  | TE_const _ ->
-      (* Constants are always initialized. *)
-      (Dprod (Datom D0), cs)
-  | TE_ident x -> infer_ident env cs x
-  | TE_unop (op, e) ->
-      let d_op, cs = infer_unop cs op in
-      let d_e, cs = infer_expr env cs e in
-      infer_app cs d_op d_e
-  | TE_binop (op, e1, e2) ->
-      let d_op, cs = infer_binop cs op in
-      let d_args, cs = infer_tuple env cs [ e1; e2 ] in
-      infer_app cs d_op d_args
-  | TE_app (f, es) ->
-      let d_f, cs = infer_ident env cs f in
-      let d_es, cs = infer_tuple env cs es in
-      infer_app cs d_f d_es
-  | TE_prim (_f, _es) -> failwith "infer_expr : TE_prim not implemented yet"
-  | TE_if (e1, e2, e3) ->
-      (* [if-then-else] has type [forall d. d * d * d -> d]. *)
-      let dvar = Datom (fresh_delay_var ()) in
-      let d_if = Dfunc (Dtuple [ dvar; dvar; dvar ], dvar) in
-      let d_args, cs = infer_tuple env cs [ e1; e2; e3 ] in
-      infer_app cs d_if d_args
-  | TE_pre e ->
-      (* [pre] has type [0 -> 1]. *)
-      let d_pre = Dfunc (Datom D0, Datom D1) in
-      let d_e, cs = infer_expr env cs e in
-      infer_app cs d_pre d_e
-  | TE_arrow (e1, e2) ->
-      (* [->] has type [forall d. d * 1 -> d]. *)
-      let dvar = Datom (fresh_delay_var ()) in
-      let d_arrow = Dfunc (Dtuple [ dvar; Datom D1 ], dvar) in
-      let d_args, cs = infer_tuple env cs [ e1; e2 ] in
-      infer_app cs d_arrow d_args
-  | TE_tuple es -> infer_tuple env cs es
-  | TE_print es ->
-      (* The printing function has type [forall d. (d * d * ...) -> d]. *)
-      let dvar = Datom (fresh_delay_var ()) in
-      let d_print = Dfunc (Dtuple (List.map (fun _ -> dvar) es), dvar) in
-      let d_args, cs = infer_tuple env cs es in
-      infer_app cs d_print d_args
+  let res, cs =
+    match e.texpr_desc with
+    | TE_const _ ->
+        (* Constants are always initialized. *)
+        (Dprod (Datom D0), cs)
+    | TE_ident x -> infer_ident env cs x
+    | TE_unop (op, e) ->
+        let d_op, cs = infer_unop cs op in
+        let d_e, cs = infer_expr env cs e in
+        infer_app cs d_op d_e
+    | TE_binop (op, e1, e2) ->
+        let d_op, cs = infer_binop cs op in
+        let d_args, cs = infer_tuple env cs [ e1; e2 ] in
+        infer_app cs d_op d_args
+    | TE_app (f, es) ->
+        let d_f, cs = infer_ident env cs f in
+        let d_es, cs = infer_tuple env cs es in
+        infer_app cs d_f d_es
+    | TE_prim (_f, _es) -> failwith "infer_expr : TE_prim not implemented yet"
+    | TE_if (e1, e2, e3) ->
+        (* [if-then-else] has type [forall d. d * d * d -> d]. *)
+        let dvar = Datom (fresh_delay_var ()) in
+        let d_if = Dfunc (Dtuple [ dvar; dvar; dvar ], dvar) in
+        let d_args, cs = infer_tuple env cs [ e1; e2; e3 ] in
+        infer_app cs d_if d_args
+    | TE_pre e ->
+        (* [pre] has type [0 -> 1]. *)
+        let d_pre = Dfunc (Datom D0, Datom D1) in
+        let d_e, cs = infer_expr env cs e in
+        infer_app cs d_pre d_e
+    | TE_arrow (e1, e2) ->
+        (* [->] has type [forall d. d * 1 -> d]. *)
+        let dvar = Datom (fresh_delay_var ()) in
+        let d_arrow = Dfunc (Dtuple [ dvar; Datom D1 ], dvar) in
+        let d_args, cs = infer_tuple env cs [ e1; e2 ] in
+        infer_app cs d_arrow d_args
+    | TE_tuple es -> infer_tuple env cs es
+    | TE_print es ->
+        (* The printing function has type [forall d. (d * d * ...) -> d]. *)
+        let dvar = Datom (fresh_delay_var ()) in
+        let d_print = Dfunc (Dtuple (List.map (fun _ -> dvar) es), dvar) in
+        let d_args, cs = infer_tuple env cs es in
+        infer_app cs d_print d_args
+  in
+  Format.printf "INFER %a |- %a : %a@\n" Constraints.print cs Typed_ast_printer.print_exp
+    e print_d_type res;
+  (res, cs)
 
 (** Helper function to infer a [d_type] for a tuple of expressions, and assemble the
     resulting delays in a tuple. It assumes there are at least two expressions (i.e. it
@@ -262,16 +201,16 @@ and infer_tuple (env : d_env) (cs : Constraints.t) (es : t_expr list) :
 let infer_equation (env : d_env) (cs : Constraints.t) (eq : t_equation) :
     (string * d_prod) list * Constraints.t =
   let d_eq, cs = infer_expr env cs eq.teq_expr in
-  let vars = eq.teq_patt.tpatt_desc in
-  match d_eq with
-  | Dprod (Dtuple ds) when List.length ds = List.length vars ->
-      (List.map2 (fun v d -> (v, d)) vars ds, cs)
-  | _ -> failwith "infer_equation : expected a product type (of the right arity)"
+  match (eq.teq_patt.tpatt_desc, d_eq) with
+  | [ v ], Dprod d -> ([ (v, d) ], cs)
+  | vs, Dprod (Dtuple ds) when List.length ds = List.length vs -> (List.combine vs ds, cs)
+  | _ -> failwith "infer_equation : invalid pattern"
 
 (** Check a node is well initialized in a given delay environment, and add the node to the
     delay environment. This assumes the node has already been scheduled.
     @raise Initialization if the node is not properly initialized. *)
 let check_node (env : d_env) (node : t_node) : d_env =
+  Format.printf "NODE %s\n" node.tn_name;
   (* Add the node's inputs to the delay environment. 
      Careful : the delay types of the inputs are fixed (i.e. not polymorphic), and must _not_
      be refreshed each time they are accessed. *)
@@ -294,12 +233,15 @@ let check_node (env : d_env) (node : t_node) : d_env =
   let d_outputs = List.map (fun (v, _) -> StringMap.find v map) node.tn_output in
   (* Compute the overall delay type of the node. *)
   let mk_bundle (ds : d_prod list) : d_prod =
-    match ds with
-    | [] -> failwith "check_node : empty tuple"
-    | [ d ] -> d
-    | ds -> Dtuple ds
+    match ds with [ d ] -> d | ds -> Dtuple ds
   in
   let d_node = Dfunc (mk_bundle d_inputs, mk_bundle d_outputs) in
+  Format.printf "RESULT %a |- %a@\n" Constraints.print cs print_d_type d_node;
   (* Add the node to the delay environment (but don't keep the node's variables in the environment). *)
   (* TODO : refresh (instantiate) the node's type in the thunk. *)
   StringMap.add node.tn_name (fun () -> (d_node, cs)) env
+
+(** Check that all nodes in a file are well initialized.
+    @raise Initialization if a node is not well initialized. *)
+let check (file : t_file) : unit =
+  ignore @@ List.fold_left check_node StringMap.empty file
