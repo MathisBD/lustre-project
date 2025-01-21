@@ -1,6 +1,9 @@
 open Asttypes
 open Typed_ast
 
+(** Exception raised when a node is not properly initialized. *)
+exception Initialization
+
 (**************************************************************************)
 (** *** Delay Types. *)
 (**************************************************************************)
@@ -90,6 +93,8 @@ end
     We use a thunk so that accessing the delay type of a variable always returns a new
     instantiation of the delay type and constraints. *)
 type d_env = (unit -> d_type * Constraints.t) StringMap.t
+
+(** TODO : replace SubtypingErrpr by Initialization. *)
 
 (** [SubtypingError (cs, t1, t2)] means that we could not add the subtyping constraint
     [t1 <= t2] in constraint set [cs]. *)
@@ -190,7 +195,8 @@ let infer_ident (env : d_env) (cs : Constraints.t) (x : string) : d_type * Const
   | None -> failwith "infer_ident : unbound identifier"
 
 (** [infer_expr env cs e] infers a delay type for expression [e] in delay environment
-    [env] and with constraints [cs]. *)
+    [env] and with constraints [cs].
+    @raise SubtypingError *)
 let rec infer_expr (env : d_env) (cs : Constraints.t) (e : t_expr) :
     d_type * Constraints.t =
   match e.texpr_desc with
@@ -238,7 +244,8 @@ let rec infer_expr (env : d_env) (cs : Constraints.t) (e : t_expr) :
 
 (** Helper function to infer a [d_type] for a tuple of expressions, and assemble the
     resulting delays in a tuple. It assumes there are at least two expressions (i.e. it
-    always returns a [Dtuple]). *)
+    always returns a [Dtuple]).
+    @raise SubtypingError *)
 and infer_tuple (env : d_env) (cs : Constraints.t) (es : t_expr list) :
     d_type * Constraints.t =
   let rec loop cs = function
@@ -251,17 +258,48 @@ and infer_tuple (env : d_env) (cs : Constraints.t) (es : t_expr list) :
   let d_es, cs = loop cs es in
   (mk_d_tuple d_es, cs)
 
-(** Main entry-point : check a node is well initialized in a given delay environment, and
-    compute its delay type. *)
-(*let is_node_initialized (env : delay_env) (node : t_node) : bool =
-  (* Compute the initial delay environment for this node, which contains the node's inputs 
-     and local variables. *)
-  let env =
-    List.fold_left
-      (fun env (x, _) ->
-        StringMap.add x (Dprod [ fresh_delay_var () ], empty_constraints) env)
-      env
-      (node.tn_input @ node.tn_local)
+(** Infer a delay type for each variable bound by an equation. *)
+let infer_equation (env : d_env) (cs : Constraints.t) (eq : t_equation) :
+    (string * d_prod) list * Constraints.t =
+  let d_eq, cs = infer_expr env cs eq.teq_expr in
+  let vars = eq.teq_patt.tpatt_desc in
+  match d_eq with
+  | Dprod (Dtuple ds) when List.length ds = List.length vars ->
+      (List.map2 (fun v d -> (v, d)) vars ds, cs)
+  | _ -> failwith "infer_equation : expected a product type (of the right arity)"
+
+(** Check a node is well initialized in a given delay environment, and add the node to the
+    delay environment. This assumes the node has already been scheduled.
+    @raise Initialization if the node is not properly initialized. *)
+let check_node (env : d_env) (node : t_node) : d_env =
+  (* Add the node's inputs to the delay environment. 
+     Careful : the delay types of the inputs are fixed (i.e. not polymorphic), and must _not_
+     be refreshed each time they are accessed. *)
+  let d_inputs = List.map (fun _ -> Datom (fresh_delay_var ())) node.tn_input in
+  let node_env =
+    List.fold_left2
+      (fun env (x, _) d -> StringMap.add x (fun () -> (Dprod d, Constraints.empty)) env)
+      env node.tn_input d_inputs
   in
-  (* Check each equation is well-initialized. *)
-  true*)
+  (* Check each equation is well-initialized, starting from an empty constraint set. *)
+  let rec loop cs (acc : d_prod StringMap.t) = function
+    | [] -> (acc, cs)
+    | eq :: eqs ->
+        (* TODO : raise Initialization if there is a subtyping error. *)
+        let res, cs = infer_equation node_env cs eq in
+        let acc = List.fold_left (fun acc (v, d) -> StringMap.add v d acc) acc res in
+        loop cs acc eqs
+  in
+  let map, cs = loop Constraints.empty StringMap.empty node.tn_equs in
+  let d_outputs = List.map (fun (v, _) -> StringMap.find v map) node.tn_output in
+  (* Compute the overall delay type of the node. *)
+  let mk_bundle (ds : d_prod list) : d_prod =
+    match ds with
+    | [] -> failwith "check_node : empty tuple"
+    | [ d ] -> d
+    | ds -> Dtuple ds
+  in
+  let d_node = Dfunc (mk_bundle d_inputs, mk_bundle d_outputs) in
+  (* Add the node to the delay environment (but don't keep the node's variables in the environment). *)
+  (* TODO : refresh (instantiate) the node's type in the thunk. *)
+  StringMap.add node.tn_name (fun () -> (d_node, cs)) env
