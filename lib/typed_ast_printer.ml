@@ -62,10 +62,10 @@ let rec print_exp fmt e =
   | TE_app (name, e_list) | TE_prim (name, e_list) ->
       fprintf fmt "%a(@[%a@])" print_name name print_arg_list e_list
   | TE_if (cond, cons, altr) ->
-      fprintf fmt "@[if %a@ then %a@ else %a@]" print_exp cond print_exp cons
-        print_exp altr
+      fprintf fmt "@[if %a@ then %a@ else %a@]" print_exp cond print_exp cons print_exp
+        altr
   | TE_pre e -> fprintf fmt "@[pre(%a@)]" print_exp e
-  | TE_arrow (l, r) -> fprintf fmt "@[%a@ -> %a@]" print_exp l print_exp r
+  | TE_arrow (l, r) -> fprintf fmt "(@[%a@ -> %a@])" print_exp l print_exp r
   | TE_tuple e_list -> fprintf fmt "(@[%a@])" print_tuple_arg_list e_list
   | TE_print e_list -> fprintf fmt "print (@[%a@])" print_arg_list e_list
 
@@ -88,9 +88,8 @@ and print_const_exp fmt ce_list =
   | h :: t -> fprintf fmt "%a,@ %a" print_const h print_const_exp t
 
 let print_eq fmt eq =
-  fprintf fmt "@[(%a) = @[%a@]@]"
-    (print_list print_name ",")
-    eq.teq_patt.tpatt_desc print_exp eq.teq_expr
+  fprintf fmt "@[(%a) = @[%a@]@]" (print_list print_name ",") eq.teq_patt.tpatt_desc
+    print_exp eq.teq_expr
 
 let print_base_type fmt bty =
   match bty with
@@ -107,14 +106,9 @@ let print_var_dec_list = print_list print_var_dec ";"
 
 let print_node fmt nd =
   fprintf fmt
-    "@[node %s(@[%a@]) returns (@[%a@])@\n\
-     var @[%a;@]@\n\
-     @[<v 2>let@ @[%a@]@]@\n\
-     tel@]"
+    "@[node %s(@[%a@]) returns (@[%a@])@\nvar @[%a;@]@\n@[<v 2>let@ @[%a@]@]@\ntel@]"
     nd.tn_name print_var_dec_list nd.tn_input print_var_dec_list nd.tn_output
-    print_var_dec_list nd.tn_local
-    (print_list_eol print_eq ";")
-    nd.tn_equs
+    print_var_dec_list nd.tn_local (print_list_eol print_eq ";") nd.tn_equs
 
 let print_node_list_std ndl =
   List.iter (fun nd -> Format.printf "%a@\n@." print_node nd) ndl
