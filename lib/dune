@@ -1,7 +1,7 @@
 (library
  (name lib)
  (public_name lustre-project.lib)
- (libraries menhirLib)
+ (libraries menhirLib ocamlgraph)
  (modules_without_implementation ast asttypes typed_ast))
 
 (ocamllex lexer)
