@@ -83,8 +83,8 @@ let rec print_d_scheme fmt (xs, cs, d) : unit =
 
 and print_vars fmt = function
   | [] -> ()
-  | [ v ] -> fprintf fmt "%d" v
-  | v :: vs -> fprintf fmt "%d %a" v print_vars vs
+  | [ v ] -> fprintf fmt "%a" print_d_atom (Dvar v)
+  | v :: vs -> fprintf fmt "%a %a" print_d_atom (Dvar v) print_vars vs
 
 (** Apply a renaming (a function of type [d_var -> d_var]) on a [d_type]. *)
 let rec rename_d_type subst = function

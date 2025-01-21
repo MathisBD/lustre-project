@@ -113,7 +113,7 @@ let infer_ident (env : d_env) (cs : Constraints.t) (x : string) : d_type * Const
           cs (Constraints.to_list cs_x)
       in
       (d_x, cs)
-  | None -> failwith "infer_ident : unbound identifier"
+  | None -> failwith @@ Format.sprintf "infer_ident : unbound identifier [%s]" x
 
 (** [infer_expr env cs e] infers a delay type for expression [e] in delay environment
     [env] and with constraints [cs]. *)
@@ -194,38 +194,55 @@ let infer_equation (env : d_env) (cs : Constraints.t) (eq : t_equation) :
 (** Check a node is well initialized in a given delay environment, and add the node to the
     delay environment. This assumes the node has already been scheduled.
     @raise InitializationError if an expression is not well initialized. *)
-let check_node (env : d_env) (node : t_node) : d_env =
+let check_node (initial_env : d_env) (node : t_node) : d_env =
   Format.printf "NODE %s\n" node.tn_name;
   (* Add the node's inputs to the delay environment. Careful : the inputs are _not_ polymorphic, so the corresponding type schemes 
      do not quantify over any variables. *)
   let d_inputs = List.map (fun _ -> fresh_d_var ()) node.tn_input in
-  let node_env =
+  let env =
     List.fold_left2
       (fun env (x, _) d ->
         StringMap.add x ([], Constraints.empty, Dprod (Datom (Dvar d))) env)
-      env node.tn_input d_inputs
+      initial_env node.tn_input d_inputs
   in
-  (* Check each equation is well-initialized, starting from an empty constraint set. *)
-  (* TODO : expand the node env as we go (equations might depend on previous equations). *)
-  let rec loop cs (acc : d_prod StringMap.t) = function
-    | [] -> (acc, cs)
+  (* Check each equation is well-initialized, starting from an empty constraint set.
+     Along the way we accumulate (in the environment) the delay type of each variable defined by an equation. *)
+  let rec loop env cs = function
+    | [] -> (env, cs)
     | eq :: eqs ->
-        let res, cs = infer_equation node_env cs eq in
-        let acc = List.fold_left (fun acc (v, d) -> StringMap.add v d acc) acc res in
-        loop cs acc eqs
+        let ds_eq, cs = infer_equation env cs eq in
+        let env =
+          List.fold_left
+            (fun env (v, d) ->
+              (* Careful : we have to use a monomorphic type scheme here. *)
+              StringMap.add v ([], cs, Dprod d) env)
+            env ds_eq
+        in
+        loop env cs eqs
   in
-  let map, cs = loop Constraints.empty StringMap.empty node.tn_equs in
-  let d_outputs = List.map (fun (v, _) -> StringMap.find v map) node.tn_output in
-  (* Compute the overall delay type of the node. *)
+  let env, cs = loop env Constraints.empty node.tn_equs in
+  (* Fetch the type of each output. *)
+  let d_outputs =
+    List.map
+      begin
+        fun (v, _) ->
+          match StringMap.find v env with
+          | [], _, Dprod d -> d
+          | _ -> failwith "check_node : invalid type scheme for node output"
+      end
+      node.tn_output
+  in
+  (* Compute the overall delay type scheme of the node. *)
   let mk_bundle (ds : d_prod list) : d_prod =
     match ds with [ d ] -> d | ds -> Dtuple ds
   in
   let d_node =
     Dfunc (mk_bundle @@ List.map (fun d -> Datom (Dvar d)) d_inputs, mk_bundle d_outputs)
   in
-  Format.printf "RESULT %a |- %a@\n" Constraints.print cs print_d_type d_node;
-  (* Add the node to the delay environment (but don't keep the node's variables in the environment). *)
-  StringMap.add node.tn_name (d_inputs, cs, d_node) env
+  let scheme = (d_inputs, cs, d_node) in
+  Format.printf "RESULT %a@\n" print_d_scheme scheme;
+  (* Return the _initial_ delay environment augmented with a new entry for this node. *)
+  StringMap.add node.tn_name scheme initial_env
 
 (** Check that all nodes in a file are well initialized.
     @raise InitializationError if an expression is not well initialized. *)

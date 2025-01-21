@@ -1,4 +1,6 @@
 node sum (x, y, z : int) returns (o : int);
+var tmp : int;
 let 
-  o = (x -> y) + z;
+  tmp = x -> y;
+  o = tmp + z;
 tel 
