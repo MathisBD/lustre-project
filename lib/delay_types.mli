@@ -1,6 +1,8 @@
 (** Delay variables are encoded using a unique (numerical) identifier. *)
 type d_var = int
 
+module DvarSet : Set.S with type elt = d_var
+
 (** Atomic delay type. *)
 type d_atom =
   (* Initialized at all time steps >= 0. *)
@@ -33,12 +35,18 @@ module Constraints : sig
       not check the result is consistent. *)
   val add : t -> d_atom -> d_atom -> t
 
+  (** [union cs1 cs2] takes the union of [cs1] and [cs2]. *)
+  val union : t -> t -> t
+
   (** Check if a set of constraints is consistent, i.e. does not imply the inequality
       [D1 <= D0]. *)
   val consistent : t -> bool
 
   (** Convert a set of constraints to a list of constraints. *)
   val to_list : t -> (d_atom * d_atom) list
+
+  (** Compute the set of all variables in a constraint set. *)
+  val vars : t -> DvarSet.t
 
   (** Print a set of constraints. *)
   val print : Format.formatter -> t -> unit
@@ -47,14 +55,46 @@ end
 (** Delay type schemes. [(xs, cs, d)] encodes the type scheme [forall xs : cs, d]. *)
 type d_scheme = d_var list * Constraints.t * d_type
 
+(** Compute the set of all variables in a [d_type]. *)
+val vars_d_type : d_type -> DvarSet.t
+
 (** Generate a fresh delay variable. *)
 val fresh_d_var : unit -> d_var
 
 (** Instantiate a delay type scheme, i.e. replace all quantified delay variables by fresh
     delay variables. *)
-val instantiate_d_scheme : d_scheme -> Constraints.t * d_type
+val instantiate_scheme : d_scheme -> Constraints.t * d_type
+
+(** Remove useless information contained in a type scheme :
+    - remove trivial constraints.
+    - remove any quantified variable which is not present in the delay type or
+      constraints. *)
+val tidy_scheme : d_scheme -> d_scheme
+
+(** * Printing. *)
 
 val print_d_atom : Format.formatter -> d_atom -> unit
 val print_d_prod : Format.formatter -> d_prod -> unit
 val print_d_type : Format.formatter -> d_type -> unit
 val print_d_scheme : Format.formatter -> d_scheme -> unit
+
+(** * Substitutions. *)
+
+(** Apply a substitution (a function of type [d_var -> d_atom]) on a [d_type]. *)
+val subst_d_type : (d_var -> d_atom) -> d_type -> d_type
+
+(** Apply a substitution (a function of type [d_var -> d_atom]) on a [d_prod]. *)
+val subst_d_prod : (d_var -> d_atom) -> d_prod -> d_prod
+
+(** Apply a substitution (a function of type [d_var -> d_atom]) on a [d_atom]. *)
+val subst_d_atom : (d_var -> d_atom) -> d_atom -> d_atom
+
+(** Apply a substitution (a function of type [d_var -> d_atom]) to a set of constraints.
+*)
+val subst_constraints : (d_var -> d_atom) -> Constraints.t -> Constraints.t
+
+(** * Simplifying constraints. *)
+
+val simplify_scheme_clamp : d_scheme -> d_scheme
+val simplify_scheme_filter : d_scheme -> d_scheme
+val simplify_scheme_bounds : d_scheme -> d_scheme

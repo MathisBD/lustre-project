@@ -64,7 +64,7 @@ let rec print_exp fmt e =
   | TE_if (cond, cons, altr) ->
       fprintf fmt "@[if %a@ then %a@ else %a@]" print_exp cond print_exp cons print_exp
         altr
-  | TE_pre e -> fprintf fmt "@[pre(%a@)]" print_exp e
+  | TE_pre e -> fprintf fmt "@[pre(%a)@]" print_exp e
   | TE_arrow (l, r) -> fprintf fmt "(@[%a@ -> %a@])" print_exp l print_exp r
   | TE_tuple e_list -> fprintf fmt "(@[%a@])" print_tuple_arg_list e_list
   | TE_print e_list -> fprintf fmt "print (@[%a@])" print_arg_list e_list

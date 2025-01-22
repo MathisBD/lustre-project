@@ -84,6 +84,11 @@ let () =
       report_loc l;
       eprintf "%a\n@." Typing.report e;
       exit 1
+  | Initialization.InitializationError e ->
+      report_loc e.texpr_loc;
+      eprintf "the following expression is not well initialized : %a\n@."
+        Typed_ast_printer.print_exp e;
+      exit 1
   | e ->
       eprintf "Anomaly: %s\n@." (Printexc.to_string e);
       exit 2
