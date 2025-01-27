@@ -1,4 +1,4 @@
-node sum (x, y, z : int) returns (o : int);
+node simple () returns (dt: float);
 let 
-  o = (x -> y) + z;
+  dt = 0.001;
 tel 

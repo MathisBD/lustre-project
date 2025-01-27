@@ -95,6 +95,19 @@ val subst_constraints : (d_var -> d_atom) -> Constraints.t -> Constraints.t
 
 (** * Simplifying constraints. *)
 
+(** For each delay variable [d] such that [d <= 0] (resp. [1 <= d]), replace [d] by [0]
+    (resp. by [1]). *)
 val simplify_scheme_clamp : d_scheme -> d_scheme
+
+(** In a type scheme [(xs, cs, d)], remove delay variables which do not appear in [d], and
+    modify the constraint graph [cs] accordingly so that no constraints are lost. *)
 val simplify_scheme_filter : d_scheme -> d_scheme
+
+(** Replace all input (contra-variant) delay variables by their upper bound and all output
+    (co-variant) delay variables by their lower bound. Variables are processed one after
+    the other, until a fixpoint is reached. The computation of lower/upper bounds is quite
+    basic : in particular this procedure does not create new variables, it only removes
+    variables.
+
+    This can be an expensive operation. *)
 val simplify_scheme_bounds : d_scheme -> d_scheme
