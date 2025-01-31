@@ -270,7 +270,7 @@ let check_node (initial_env : d_env) (node : t_node) : d_env =
     (xs, cs, d_node) |> simplify_scheme_clamp |> simplify_scheme_filter
     |> simplify_scheme_bounds
   in
-  Format.printf "@[scheme %a@\n@]" print_d_scheme scheme;
+  Format.printf "@[%a@\n@]" print_d_scheme scheme;
   StringMap.add node.tn_name scheme initial_env
 
 (** Check that all nodes in a file are well initialized.

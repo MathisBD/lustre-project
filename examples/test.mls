@@ -65,14 +65,3 @@ let
   x = integr (dx);
 tel
 
-node min_max (x: int) returns (min, max:int);
-var first: bool;
-    pmin, pmax: int;
-let
-  first = true -> false;
-  (pmin, pmax) = if first then (x, x) else ((0,0) -> pre (min, max));
-  (min, max) = if x < pmin then (x, pmax)
-               else if x > pmax then (pmin, x)
-               else (pmin, pmax);
-tel
-
